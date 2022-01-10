@@ -97,6 +97,60 @@ class LoadImageFromFileMono3D(LoadImageFromFile):
 
 
 @PIPELINES.register_module()
+class LoadImageFromFileMonoTemporal3D(LoadImageFromFile):  #chgd
+    """Load an image from file in monocular 3D object detection. Compared to 2D
+    detection, additional camera parameters need to be loaded.
+
+    Args:
+        kwargs (dict): Arguments are the same as those in \
+            :class:`LoadImageFromFile`.
+    """
+
+    def __call__(self, results):
+        """Call functions to load image and get image meta information.
+
+        Args:
+            results (dict): Result dict from :obj:`mmdet.CustomDataset`.
+
+        Returns:
+            dict: The dict contains loaded image and meta information.
+        """
+        # super().__call__(results)
+        if self.file_client is None:
+            self.file_client = mmcv.FileClient(**self.file_client_args)
+
+        if results['img_prefix'] is not None:
+            filename = osp.join(results['img_prefix'],
+                                results['img_info']['filename'])
+        else:
+            filename = results['img_info']['filename']
+
+        new_img = []
+        if results['img_prefix'] is not None:
+            for prev_name in results['prev_img_list']:
+                filename = osp.join(results['img_prefix'],
+                                prev_name)
+                img_bytes = self.file_client.get(filename)
+                img = mmcv.imfrombytes(img_bytes, flag=self.color_type)
+                assert img.shape[0] == 900 and img.shape[1] == 1600
+                new_img.append(img)
+
+        if self.to_float32:
+            img = img.astype(np.float32)
+
+        results['filename'] = filename
+        results['ori_filename'] = results['img_info']['filename']
+        results['img'] = new_img
+        results['img_shape'] = img.shape
+        results['ori_shape'] = img.shape
+        results['img_fields'] = ['img']
+
+
+
+        results['cam2img'] = results['img_info']['cam_intrinsic']
+        return results
+
+@PIPELINES.register_module()
 class LoadPointsFromMultiSweeps(object):
     """Load points from multiple sweeps.
 
