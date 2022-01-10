@@ -6,6 +6,7 @@ from mmdet3d.core.points import BasePoints, get_points_type
 from mmdet.datasets.builder import PIPELINES
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile
 
+import os.path as osp
 
 @PIPELINES.register_module()
 class LoadMultiViewImageFromFiles(object):

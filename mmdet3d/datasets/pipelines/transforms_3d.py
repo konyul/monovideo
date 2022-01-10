@@ -14,6 +14,8 @@ from mmdet.datasets.pipelines import RandomFlip
 from ..builder import OBJECTSAMPLERS
 from .data_augment_utils import noise_per_object_v3_
 from mmdet.datasets.pipelines import Normalize, Pad
+from numpy import random
+import mmcv
 
 @PIPELINES.register_module()
 class RandomDropPointsColor(object):
@@ -1733,16 +1735,15 @@ class PadList(Pad):   #chgd
 
     def __init__(self, size=None, size_divisor=None, pad_val=0):
 
-        super().__init__(size, size_divisor, pad_val)
+        super().__init__(size, size_divisor)
+        self.pad_val = pad_val
         assert size is not None or size_divisor is not None
         assert size is None or size_divisor is None
 
     def _pad_img(self, results):
         """Pad images according to ``self.size``."""
         for key in results.get('img_fields', ['img']):
-
             for index_ in range(len(results[key])):
-                    
                 if self.size is not None:
                     padded_img = mmcv.impad(
                         results[key][index_], shape=self.size, pad_val=self.pad_val)
