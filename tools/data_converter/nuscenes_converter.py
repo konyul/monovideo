@@ -381,6 +381,8 @@ def export_2d_annotation(root_path, info_path, version, mono3d=True):
                     ego2global_rotation=info['ego2global_rotation'],
                     ego2global_translation=info['ego2global_translation'],
                     cam_intrinsic=cam_info['cam_intrinsic'],
+                    timestamp=cam_info['timestamp'],
+                    cam_type=cam,
                     width=width,
                     height=height))
             for coco_info in coco_infos:
@@ -395,7 +397,7 @@ def export_2d_annotation(root_path, info_path, version, mono3d=True):
         json_prefix = f'{info_path[:-4]}_mono3d'
     else:
         json_prefix = f'{info_path[:-4]}'
-    mmcv.dump(coco_2d_dict, f'{json_prefix}.coco.json')
+    mmcv.dump(coco_2d_dict, f'{json_prefix}.coco!.json')
 
 
 def get_2d_boxes(nusc,

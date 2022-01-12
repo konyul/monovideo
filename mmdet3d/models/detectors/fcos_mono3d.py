@@ -21,7 +21,7 @@ class FCOSMono3D(SingleStageMono3DDetector):
         super(FCOSMono3D, self).__init__(backbone, neck, bbox_head, train_cfg,
                                          test_cfg, pretrained)
 
-
+#chgd
 @DETECTORS.register_module()
 class FCOSMonoTemporal3D(SingleStageMono3DDetector):
     r"""`FCOS3D <https://arxiv.org/abs/2104.10956>`_ for monocular 3D object detection.
@@ -41,7 +41,7 @@ class FCOSMonoTemporal3D(SingleStageMono3DDetector):
                                          test_cfg, pretrained)
 
     def forward_train(self,
-                      img,  #chgd
+                      img,
                       img_metas,
                       gt_bboxes,
                       gt_labels,

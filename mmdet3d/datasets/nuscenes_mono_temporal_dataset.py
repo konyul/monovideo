@@ -102,7 +102,27 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 use_radar=False,
                 use_map=False,
                 use_external=False)
+        
+        if len(self.data_infos) > 168700:  #chgd
+            self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
+            self.data_infos = self.data_infos[::7]
+        from nuscenes.nuscenes import NuScenes
+        self.nusc = NuScenes(version=self.version, dataroot=self.data_root, verbose=True)
+        if not self.test_mode:
+            self._set_group_flag()
+        
+    def _set_group_flag(self):  #chgd
+        """Set flag according to image aspect ratio.
 
+        Images with aspect ratio greater than 1 will be set as group 1,
+        otherwise group 0.
+        """
+        self.flag = np.zeros(len(self.data_infos), dtype=np.uint8)
+        for i in range(len(self.data_infos)):
+            img_info = self.data_infos[i]
+            if img_info['width'] / img_info['height'] > 1:
+                self.flag[i] = 1
+                
     def pre_pipeline(self, results):
         """Initialization before data preparation.
 
@@ -260,7 +280,7 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                     AttrMapping_rev2[attr_idx] == 'vehicle.stopped':
                 return AttrMapping_rev2[attr_idx]
             else:
-                return NuScenesMonoDataset.DefaultAttribute[label_name]
+                return NuScenesMonoTemporalDataset.DefaultAttribute[label_name]
         elif label_name == 'pedestrian':
             if AttrMapping_rev2[attr_idx] == 'pedestrian.moving' or \
                 AttrMapping_rev2[attr_idx] == 'pedestrian.standing' or \
@@ -268,15 +288,15 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                     'pedestrian.sitting_lying_down':
                 return AttrMapping_rev2[attr_idx]
             else:
-                return NuScenesMonoDataset.DefaultAttribute[label_name]
+                return NuScenesMonoTemporalDataset.DefaultAttribute[label_name]
         elif label_name == 'bicycle' or label_name == 'motorcycle':
             if AttrMapping_rev2[attr_idx] == 'cycle.with_rider' or \
                     AttrMapping_rev2[attr_idx] == 'cycle.without_rider':
                 return AttrMapping_rev2[attr_idx]
             else:
-                return NuScenesMonoDataset.DefaultAttribute[label_name]
+                return NuScenesMonoTemporalDataset.DefaultAttribute[label_name]
         else:
-            return NuScenesMonoDataset.DefaultAttribute[label_name]
+            return NuScenesMonoTemporalDataset.DefaultAttribute[label_name]
 
     def _format_bbox(self, results, jsonfile_prefix=None):
         """Convert the results to the standard format.
@@ -667,14 +687,29 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 introduced by pipeline.
         """
         idx_list = []
-        for data_index in [-3*6, -2*6, -1*6, 0]:
-            index = max(idx + data_index, 0)
-            file_name_ = self.data_infos[index]['filename']
-            file_date = self.data_infos[index]['filename'].split('/')[2].split('_')[0]
-            if file_date != self.data_infos[idx]['filename'].split('/')[2].split('_')[0]:
-                file_name_ = self.data_infos[idx]['filename']
-            idx_list.append(file_name_)
+        # for data_index in [-3*6, -2*6, -1*6, 0]:
+        #     index = max(idx + data_index, 0)
+        #     file_name_ = self.data_infos[index]['filename']
+        #     file_date = self.data_infos[index]['filename'].split('/')[2].split('_')[0]
+        #     if file_date != self.data_infos[idx]['filename'].split('/')[2].split('_')[0]:
+        #         file_name_ = self.data_infos[idx]['filename']
+        #     idx_list.append(file_name_)
         img_info = self.data_infos[idx]
+        
+        
+        sensor = self.nusc.get('sample_data',img_info['id'])['channel']
+        sample_token = img_info['token']
+        idx_list.append(img_info['filename'])
+        prev_file_name_ = img_info['filename']
+        for i in range(3):
+            scene_token = self.nusc.get('sample', sample_token)['scene_token']
+            prev_token = self.nusc.get('sample', sample_token)['prev']
+            if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
+                prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
+                prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
+                sample_token = prev_token
+            idx_list.append(prev_file_name_)
+            
         ann_info = self.get_ann_info(idx)
         results = dict(img_info=img_info, ann_info=ann_info, prev_img_list = idx_list)
         if self.proposals is not None:
