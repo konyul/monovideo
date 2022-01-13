@@ -91,7 +91,6 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         self.eval_version = eval_version
         self.use_valid_flag = use_valid_flag
         self.bbox_code_size = 9
-        self.version = version
         if self.eval_version is not None:
             from nuscenes.eval.detection.config import config_factory
             self.eval_detection_configs = config_factory(self.eval_version)
@@ -103,14 +102,21 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 use_map=False,
                 use_external=False)
         
-        if len(self.data_infos) > 168700:  #chgd
+        
+        # if len(self.data_infos)
+        if len(self.data_infos) > 20000:
+            version = 'v1.0-trainval'
+            self.version = version
+        else:
+            version = 'v1.0-mini'
+            self.version = version
+        if not self.test_mode:
             self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
             self.data_infos = self.data_infos[::7]
+            self._set_group_flag()
         from nuscenes.nuscenes import NuScenes
         self.nusc = NuScenes(version=self.version, dataroot=self.data_root, verbose=True)
-        if not self.test_mode:
-            self._set_group_flag()
-        
+
     def _set_group_flag(self):  #chgd
         """Set flag according to image aspect ratio.
 
