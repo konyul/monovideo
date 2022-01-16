@@ -10,10 +10,9 @@ from mmdet3d.core import VoxelGenerator
 from mmdet3d.core.bbox import (CameraInstance3DBoxes, DepthInstance3DBoxes,
                                LiDARInstance3DBoxes, box_np_ops)
 from mmdet.datasets.builder import PIPELINES
-from mmdet.datasets.pipelines import RandomFlip
+from mmdet.datasets.pipelines import RandomFlip, Normalize, Pad, Resize
 from ..builder import OBJECTSAMPLERS
 from .data_augment_utils import noise_per_object_v3_
-from mmdet.datasets.pipelines import Normalize, Pad
 from numpy import random
 import mmcv
 
@@ -1705,7 +1704,6 @@ class NormalizeList(Normalize):  #chgd
 
 
         for key in results.get('img_fields', ['img']):
-            
             for index_ in range(len(results[key])):
                 results[key][index_] = mmcv.imnormalize(results[key][index_], self.mean, self.std,
                                                 self.to_rgb)
@@ -1781,3 +1779,123 @@ class PadList(Pad):   #chgd
         self._pad_masks(results)
         self._pad_seg(results)
         return results
+    
+@PIPELINES.register_module()
+class ResizeList(Resize):
+    """[Resize with List]
+
+    Args:
+        Please refer to Resize
+    """
+    def __init__(self,
+                 img_scale=None,
+                 multiscale_mode='range',
+                 ratio_range=None,
+                 keep_ratio=True,
+                 bbox_clip_border=True,
+                 backend='cv2',
+                 override=False):
+        super().__init__(img_scale = img_scale,
+                       multiscale_mode = multiscale_mode,
+                       ratio_range = ratio_range,
+                       keep_ratio = keep_ratio,
+                       bbox_clip_border = bbox_clip_border,
+                       backend = backend,
+                       override = override)
+        
+    def _resize_img(self, results):
+        """Resize images with ``results['scale']``."""
+        for key in results.get('img_fields', ['img']):
+            for img_idx in range(len(results[key])):
+                if self.keep_ratio:
+                    img, scale_factor = mmcv.imrescale(
+                        results[key][img_idx],
+                        results['scale'],
+                        return_scale=True,
+                        backend=self.backend)
+                    # the w_scale and h_scale has minor difference
+                    # a real fix should be done in the mmcv.imrescale in the future
+                    new_h, new_w = img.shape[:2]
+                    h, w = results[key][img_idx].shape[:2]
+                    w_scale = new_w / w
+                    h_scale = new_h / h
+                else:
+                    img, w_scale, h_scale = mmcv.imresize(
+                        results[key][img_idx],
+                        results['scale'],
+                        return_scale=True,
+                        backend=self.backend)
+                results[key][img_idx] = img
+
+            scale_factor = np.array([w_scale, h_scale, w_scale, h_scale],
+                                    dtype=np.float32)
+            results['img_shape'] = img.shape
+            # in case that there is no padding
+            results['pad_shape'] = img.shape
+            results['scale_factor'] = scale_factor
+            results['keep_ratio'] = self.keep_ratio
+
+#chgd
+@PIPELINES.register_module()
+class RandomFlip3DList(RandomFlip3D):
+    """[RandomFlip3D with List]
+
+    Args:
+        Please refer to RandomFlip3D
+    """
+
+    def __init__(self,
+                 sync_2d=True,
+                 flip_ratio_bev_horizontal=0.0,
+                 flip_ratio_bev_vertical=0.0,
+                 **kwargs):
+        super(RandomFlip3DList, self).__init__(sync_2d=sync_2d,
+                 flip_ratio_bev_horizontal=flip_ratio_bev_horizontal,
+                 flip_ratio_bev_vertical=flip_ratio_bev_vertical,
+                 **kwargs)
+
+    def __call__(self, input_dict):
+        """Call function to flip points, values in the ``bbox3d_fields`` and
+        also flip 2D image and its annotations.
+
+        Args:
+            input_dict (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Flipped results, 'flip', 'flip_direction',
+                'pcd_horizontal_flip' and 'pcd_vertical_flip' keys are added
+                into result dict.
+        """
+        # flip 2D image and its annotations
+        super(RandomFlip3D, self).__call__(input_dict)
+
+        if self.sync_2d:
+            input_dict['pcd_horizontal_flip'] = input_dict['flip']
+            input_dict['pcd_vertical_flip'] = False
+        else:
+            if 'pcd_horizontal_flip' not in input_dict:
+                flip_horizontal = True if np.random.rand(
+                ) < self.flip_ratio else False
+                input_dict['pcd_horizontal_flip'] = flip_horizontal
+            if 'pcd_vertical_flip' not in input_dict:
+                flip_vertical = True if np.random.rand(
+                ) < self.flip_ratio_bev_vertical else False
+                input_dict['pcd_vertical_flip'] = flip_vertical
+
+        if 'transformation_3d_flow' not in input_dict:
+            input_dict['transformation_3d_flow'] = []
+
+        if input_dict['pcd_horizontal_flip']:
+            self.random_flip_data_3d(input_dict, 'horizontal')
+            input_dict['transformation_3d_flow'].extend(['HF'])
+        if input_dict['pcd_vertical_flip']:
+            self.random_flip_data_3d(input_dict, 'vertical')
+            input_dict['transformation_3d_flow'].extend(['VF'])
+
+        if type(input_dict['img']) != list:
+            img_list = []
+            for idx_ in range(len(input_dict['img'])):
+                img_list.append(input_dict['img'][idx_])
+            input_dict['img'] = img_list         
+
+        return input_dict

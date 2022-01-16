@@ -3,6 +3,8 @@ _base_ = [
     '../_base_/schedules/mmdet_schedule_1x.py', '../_base_/default_runtime.py'
 ]
 # model settings
+num_outs = 5
+channels = 256
 model = dict(
     type='FCOSMonoTemporal3D',
     pretrained='open-mmlab://detectron2/resnet101_caffe',
@@ -20,11 +22,16 @@ model = dict(
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
-        out_channels=256,
+        out_channels=channels,
         start_level=1,
         add_extra_convs='on_output',
-        num_outs=5,
+        num_outs=num_outs,
         relu_before_extra_convs=True),
+    voxel_encoder=dict(
+        type='TemporalVFE',
+        num_outs=num_outs,
+        in_channels=channels
+        ),
     bbox_head=dict(
         type='FCOSMono3DHead',
         num_classes=10,
@@ -86,7 +93,7 @@ class_names = [
 img_norm_cfg = dict(
     mean=[103.530, 116.280, 123.675], std=[1.0, 1.0, 1.0], to_rgb=False)
 train_pipeline = [
-    dict(type='LoadImageFromFileMonoTemporal3D'),
+    dict(type='LoadImageFromFileMonoTemporal3D', to_float32=True),
     dict(
         type='LoadAnnotations3D',
         with_bbox=True,
@@ -95,8 +102,8 @@ train_pipeline = [
         with_bbox_3d=True,
         with_label_3d=True,
         with_bbox_depth=True),
-    #dict(type='Resize', img_scale=(1600, 900), keep_ratio=True), #chgd
-    dict(type='RandomFlip3D', flip_ratio_bev_horizontal=0.5),
+    dict(type='ResizeList', img_scale=(1600, 900), keep_ratio=True), #chgd
+    dict(type='RandomFlip3DList', flip_ratio_bev_horizontal=0.5), #chgd
     dict(type='NormalizeList', **img_norm_cfg), #chgd
     dict(type='PadList', size_divisor=32), #chgd
     dict(type='DefaultFormatBundle3D', class_names=class_names),
@@ -125,8 +132,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=1,
-    workers_per_gpu=2,
+    samples_per_gpu=2,
+    workers_per_gpu=0,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
@@ -143,4 +150,5 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     step=[8, 11])
 total_epochs = 12
-evaluation = dict(interval=2)
+evaluation = dict(interval=12)
+resume_from = "work_dirs/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d_exp/epoch_2.pth"

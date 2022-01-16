@@ -64,14 +64,14 @@ def nuscenes_data_prep(root_path,
         max_sweeps (int, optional): Number of input consecutive frames.
             Default: 10
     """
-    # nuscenes_converter.create_nuscenes_infos(
-    #     root_path, info_prefix, version=version, max_sweeps=max_sweeps)
+    nuscenes_converter.create_nuscenes_infos(
+        root_path, info_prefix, version=version, max_sweeps=max_sweeps)
 
-    # if version == 'v1.0-test':
-    #     info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
-    #     nuscenes_converter.export_2d_annotation(
-    #         root_path, info_test_path, version=version)
-    #     return
+    if version == 'v1.0-test':
+        info_test_path = osp.join(root_path, f'{info_prefix}_infos_test.pkl')
+        nuscenes_converter.export_2d_annotation(
+            root_path, info_test_path, version=version)
+        return
 
     info_train_path = osp.join(root_path, f'{info_prefix}_infos_train.pkl')
     info_val_path = osp.join(root_path, f'{info_prefix}_infos_val.pkl')
@@ -79,8 +79,8 @@ def nuscenes_data_prep(root_path,
         root_path, info_train_path, version=version)
     nuscenes_converter.export_2d_annotation(
         root_path, info_val_path, version=version)
-    # create_groundtruth_database(dataset_name, root_path, info_prefix,
-    #                             f'{out_dir}/{info_prefix}_infos_train.pkl')
+    create_groundtruth_database(dataset_name, root_path, info_prefix,
+                                f'{out_dir}/{info_prefix}_infos_train.pkl')
 
 
 def lyft_data_prep(root_path, info_prefix, version, max_sweeps=10):
@@ -186,11 +186,11 @@ def waymo_data_prep(root_path,
 
 
 parser = argparse.ArgumentParser(description='Data converter arg parser')
-parser.add_argument('dataset', metavar='kitti', help='name of the dataset')
+parser.add_argument('dataset', metavar='nuscenes', help='name of the dataset')
 parser.add_argument(
     '--root-path',
     type=str,
-    default='./data/kitti',
+    default='./data/nuscenes',
     help='specify the root path of dataset')
 parser.add_argument(
     '--version',
@@ -207,10 +207,10 @@ parser.add_argument(
 parser.add_argument(
     '--out-dir',
     type=str,
-    default='./data/kitti',
+    default='./data/nuscenes',
     required=False,
     help='name of info pkl')
-parser.add_argument('--extra-tag', type=str, default='kitti')
+parser.add_argument('--extra-tag', type=str, default='nuscenes')
 parser.add_argument(
     '--workers', type=int, default=4, help='number of threads to be used')
 args = parser.parse_args()

@@ -1,7 +1,10 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from mmdet.models.builder import DETECTORS
 from .single_stage_mono3d import SingleStageMono3DDetector
-
+from ..builder import build_voxel_encoder
+import numpy as np
+import torch
+from mmdet3d.core import bbox3d2result
 
 @DETECTORS.register_module()
 class FCOSMono3D(SingleStageMono3DDetector):
@@ -33,12 +36,14 @@ class FCOSMonoTemporal3D(SingleStageMono3DDetector):
     def __init__(self,
                  backbone,
                  neck,
+                 voxel_encoder,
                  bbox_head,
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None):
         super(FCOSMonoTemporal3D, self).__init__(backbone, neck, bbox_head, train_cfg,
                                          test_cfg, pretrained)
+        self.voxel_encoder = build_voxel_encoder(voxel_encoder)
 
     def forward_train(self,
                       img,
@@ -81,6 +86,7 @@ class FCOSMonoTemporal3D(SingleStageMono3DDetector):
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
         x = self.extract_feat(img, img_metas)
+        x = self.voxel_encoder(x)
         losses = self.bbox_head.forward_train(x, img_metas, gt_bboxes,
                                               gt_labels, gt_bboxes_3d,
                                               gt_labels_3d, centers2d, depths,
@@ -90,22 +96,20 @@ class FCOSMonoTemporal3D(SingleStageMono3DDetector):
     def extract_feat(self, img, img_metas):
         """Directly extract features from the backbone+neck."""
         B = img.size(0)
-        if img is not None:
-            input_shape = img.shape[-2:]
-            # update real input shape of each single img
-            for img_meta in img_metas:
-                img_meta.update(input_shape=input_shape)
+        input_shape = img.shape[-2:]
+        # update real input shape of each single img
+        for img_meta in img_metas:
+            img_meta.update(input_shape=input_shape)
 
-            if img.dim() == 5 and img.size(0) == 1:
-                img.squeeze_()
-            elif img.dim() == 5 and img.size(0) > 1:
-                B, N, C, H, W = img.size()
-                img = img.view(B * N, C, H, W)
-            img_feats = self.backbone(img)
-            if isinstance(img_feats, dict):
-                img_feats = list(img_feats.values())
-        else:
-            return None
+        if img.dim() == 5 and img.size(0) == 1:
+            img.squeeze_()
+        elif img.dim() == 5 and img.size(0) > 1:
+            B, N, C, H, W = img.size()
+            img = img.view(B * N, C, H, W)
+        img_feats = self.backbone(img)
+        if isinstance(img_feats, dict):
+            img_feats = list(img_feats.values())
+        
         if self.with_neck:
             img_feats = self.neck(img_feats)
         img_feats_reshaped = []
@@ -113,3 +117,115 @@ class FCOSMonoTemporal3D(SingleStageMono3DDetector):
             BN, C, H, W = img_feat.size()
             img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W))
         return img_feats_reshaped
+        
+
+    def simple_test(self, img, img_metas, rescale=False):
+        """Test function without test time augmentation.
+
+        Args:
+            imgs (list[torch.Tensor]): List of multiple images
+            img_metas (list[dict]): List of image information.
+            rescale (bool, optional): Whether to rescale the results.
+                Defaults to False.
+
+        Returns:
+            list[list[np.ndarray]]: BBox results of each image and classes.
+                The outer list corresponds to each image. The inner list
+                corresponds to each class.
+        """
+        x = self.extract_feat(img, img_metas)
+        x = self.voxel_encoder(x)
+        outs = self.bbox_head(x)
+        bbox_outputs = self.bbox_head.get_bboxes(
+            *outs, img_metas, rescale=rescale)
+
+        if self.bbox_head.pred_bbox2d:
+            from mmdet.core import bbox2result
+            bbox2d_img = [
+                bbox2result(bboxes2d, labels, self.bbox_head.num_classes)
+                for bboxes, scores, labels, attrs, bboxes2d in bbox_outputs
+            ]
+            bbox_outputs = [bbox_outputs[0][:-1]]
+
+        bbox_img = [
+            bbox3d2result(bboxes, scores, labels, attrs)
+            for bboxes, scores, labels, attrs in bbox_outputs
+        ]
+
+        bbox_list = [dict() for i in range(len(img_metas))]
+        for result_dict, img_bbox in zip(bbox_list, bbox_img):
+            result_dict['img_bbox'] = img_bbox
+        if self.bbox_head.pred_bbox2d:
+            for result_dict, img_bbox2d in zip(bbox_list, bbox2d_img):
+                result_dict['img_bbox2d'] = img_bbox2d
+        return bbox_list
+
+    def aug_test(self, imgs, img_metas, rescale=False):
+        """Test function with test time augmentation."""
+        feats = self.extract_feats(imgs, img_metas)
+        feats = self.voxel_encoder(feats)
+        # only support aug_test for one sample
+        outs_list = [self.bbox_head(x) for x in feats]
+        for i, img_meta in enumerate(img_metas):
+            if img_meta[0]['pcd_horizontal_flip']:
+                for j in range(len(outs_list[i])):  # for each prediction
+                    if outs_list[i][j][0] is None:
+                        continue
+                    for k in range(len(outs_list[i][j])):
+                        # every stride of featmap
+                        outs_list[i][j][k] = torch.flip(
+                            outs_list[i][j][k], dims=[3])
+                reg = outs_list[i][1]
+                for reg_feat in reg:
+                    # offset_x
+                    reg_feat[:, 0, :, :] = 1 - reg_feat[:, 0, :, :]
+                    # velo_x
+                    if self.bbox_head.pred_velo:
+                        reg_feat[:, 7, :, :] = -reg_feat[:, 7, :, :]
+                    # rotation
+                    reg_feat[:, 6, :, :] = -reg_feat[:, 6, :, :] + np.pi
+
+        merged_outs = []
+        for i in range(len(outs_list[0])):  # for each prediction
+            merged_feats = []
+            for j in range(len(outs_list[0][i])):
+                if outs_list[0][i][0] is None:
+                    merged_feats.append(None)
+                    continue
+                # for each stride of featmap
+                avg_feats = torch.mean(
+                    torch.cat([x[i][j] for x in outs_list]),
+                    dim=0,
+                    keepdim=True)
+                if i == 1:  # regression predictions
+                    # rot/velo/2d det keeps the original
+                    avg_feats[:, 6:, :, :] = \
+                        outs_list[0][i][j][:, 6:, :, :]
+                if i == 2:
+                    # dir_cls keeps the original
+                    avg_feats = outs_list[0][i][j]
+                merged_feats.append(avg_feats)
+            merged_outs.append(merged_feats)
+        merged_outs = tuple(merged_outs)
+
+        bbox_outputs = self.bbox_head.get_bboxes(
+            *merged_outs, img_metas[0], rescale=rescale)
+        if self.bbox_head.pred_bbox2d:
+            from mmdet.core import bbox2result
+            bbox2d_img = [
+                bbox2result(bboxes2d, labels, self.bbox_head.num_classes)
+                for bboxes, scores, labels, attrs, bboxes2d in bbox_outputs
+            ]
+            bbox_outputs = [bbox_outputs[0][:-1]]
+
+        bbox_img = [
+            bbox3d2result(bboxes, scores, labels, attrs)
+            for bboxes, scores, labels, attrs in bbox_outputs
+        ]
+
+        bbox_list = dict()
+        bbox_list.update(img_bbox=bbox_img[0])
+        if self.bbox_head.pred_bbox2d:
+            bbox_list.update(img_bbox2d=bbox2d_img[0])
+
+        return [bbox_list]

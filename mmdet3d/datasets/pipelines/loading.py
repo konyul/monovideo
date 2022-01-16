@@ -133,11 +133,9 @@ class LoadImageFromFileMonoTemporal3D(LoadImageFromFile):  #chgd
                                 prev_name)
                 img_bytes = self.file_client.get(filename)
                 img = mmcv.imfrombytes(img_bytes, flag=self.color_type)
-                assert img.shape[0] == 900 and img.shape[1] == 1600
+                if self.to_float32:
+                    img = img.astype(np.float32)
                 new_img.append(img)
-
-        if self.to_float32:
-            img = img.astype(np.float32)
 
         results['filename'] = filename
         results['ori_filename'] = results['img_info']['filename']
@@ -145,9 +143,6 @@ class LoadImageFromFileMonoTemporal3D(LoadImageFromFile):  #chgd
         results['img_shape'] = img.shape
         results['ori_shape'] = img.shape
         results['img_fields'] = ['img']
-
-
-
         results['cam2img'] = results['img_info']['cam_intrinsic']
         return results
 
