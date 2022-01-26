@@ -499,12 +499,24 @@ class TemporalVFE(nn.Module):
     def _init_layers(self):
         self.conv3d = nn.ModuleList()
         for i in range(self.num_levels):
-            conv_pred = nn.Sequential(self.convbn_3d(self.in_channels, self.in_channels, (5,3,3), 1, 1),
+            conv_pred = nn.Sequential(self.convbn_3d(self.in_channels, self.in_channels, (3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
                                         nn.ReLU(inplace=True))
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(5,3,3),1,1),
-                                        # nn.ReLU(inplace=True))
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
-                                        # nn.ReLU(inplace=True))
             self.conv3d.append(conv_pred)
     def convbn_3d(self, in_planes, out_planes, kernel_size, stride, pad):
 
