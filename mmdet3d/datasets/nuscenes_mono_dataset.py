@@ -110,10 +110,11 @@ class NuScenesMonoDataset(CocoDataset):
         else:
             version = 'v1.0-mini'
             self.version = version
-        if not self.test_mode:
-            self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
-            self.data_infos = self.data_infos[::7]
-            self._set_group_flag()
+        if version != 'v1.0-mini':
+            if not self.test_mode:
+                self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
+                self.data_infos = self.data_infos[::7]
+                self._set_group_flag()
 
     def _set_group_flag(self):  #chgd
         """Set flag according to image aspect ratio.
