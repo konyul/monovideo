@@ -19,7 +19,7 @@ s.login(senderAddr, 'ixwo ubku eulf ayxw')
 text="training is over"
 
 msg=MIMEText(text)
-msg['Subject']='s15/deform_detr'
+msg['Subject']='s9/lr_0.001'
 msg['From']=senderAddr
 msg['To']=recipientAddr
 

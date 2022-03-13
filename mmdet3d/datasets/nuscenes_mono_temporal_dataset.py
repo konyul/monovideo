@@ -102,21 +102,21 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 use_map=False,
                 use_external=False)
         
-        
-        # if len(self.data_infos)
         if len(self.data_infos) > 20000:
             version = 'v1.0-trainval'
             self.version = version
         else:
             version = 'v1.0-mini'
             self.version = version
-        if not self.test_mode:
-            self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
-            self.data_infos = self.data_infos[::7]
-            self._set_group_flag()
+        if version != 'v1.0-mini':
+            if not self.test_mode:
+                self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
+                self.data_infos = self.data_infos[::7]
+                self._set_group_flag()
         from nuscenes.nuscenes import NuScenes
         self.nusc = NuScenes(version=self.version, dataroot=self.data_root, verbose=True)
-
+        self.num_images = 3
+        
     def _set_group_flag(self):  #chgd
         """Set flag according to image aspect ratio.
 
@@ -446,7 +446,7 @@ class NuScenesMonoTemporalDataset(CocoDataset):
             eval_set=eval_set_map[self.version],
             output_dir=output_dir,
             verbose=False)
-        nusc_eval.main(render_curves=True)
+        metrics_summary = nusc_eval.main(render_curves=True)  #chgd
 
         # record metrics
         metrics = mmcv.load(osp.join(output_dir, 'metrics_summary.json'))
@@ -466,6 +466,9 @@ class NuScenesMonoTemporalDataset(CocoDataset):
 
         detail['{}/NDS'.format(metric_prefix)] = metrics['nd_score']
         detail['{}/mAP'.format(metric_prefix)] = metrics['mean_ap']
+        if logger is not None:
+            logger.info('{0}/mAP {1}'.format(metric_prefix, metrics['mean_ap']))  #chgd
+            logger.info('car/AP : {}'.format(metrics_summary['mean_dist_aps']['car']))    #chgd
         return detail
 
     def format_results(self, results, jsonfile_prefix=None, **kwargs):
@@ -553,10 +556,10 @@ class NuScenesMonoTemporalDataset(CocoDataset):
             results_dict = dict()
             for name in result_names:
                 print('Evaluating bboxes of {}'.format(name))
-                ret_dict = self._evaluate_single(result_files[name])
+                ret_dict = self._evaluate_single(result_files[name], logger) #chgd
             results_dict.update(ret_dict)
         elif isinstance(result_files, str):
-            results_dict = self._evaluate_single(result_files)
+            results_dict = self._evaluate_single(result_files, logger) #chgd
 
         if tmp_dir is not None:
             tmp_dir.cleanup()
@@ -681,6 +684,56 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 idx = self._rand_another(idx)
                 continue
             return data
+    
+    def prepare_test_img(self, idx):
+        """Get testing data  after pipeline.
+
+        Args:
+            idx (int): Index of data.
+
+        Returns:
+            dict: Testing data after pipeline with new keys introduced by \
+                pipeline.
+        """
+        idx_list = []
+        img_info = self.data_infos[idx]
+
+        sensor = self.nusc.get('sample_data',img_info['id'])['channel']
+        sample_token = img_info['token']
+        idx_list.append(img_info['filename'])
+        prev_file_name_ = img_info['filename']
+
+        ## previous samples
+        for i in range(self.num_images-1):
+            scene_token = self.nusc.get('sample', sample_token)['scene_token']
+            prev_token = self.nusc.get('sample', sample_token)['prev']
+            if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
+                prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
+                prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
+                sample_token = prev_token
+            idx_list.append(prev_file_name_)
+
+        ## previous sweeps
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
+
+        # import cv2
+        # import os
+        # direc_name = "temporal_sweep_4"
+        # idx_ = str(len(os.listdir(direc_name))).zfill(6)
+        # image_1 = cv2.imread("data/nuscenes/"+idx_list[0], cv2.COLOR_BGR2RGB)
+        # image_2 = cv2.imread("data/nuscenes/"+idx_list[1], cv2.COLOR_BGR2RGB)
+        # image_3 = cv2.imread("data/nuscenes/"+idx_list[2], cv2.COLOR_BGR2RGB)
+        # image_4 = np.hstack((image_3,image_2,image_1))
+        # cv2.imwrite(f"{direc_name}/"+idx_+".jpg",image_4)
+
+        results = dict(img_info=img_info, prev_img_list=idx_list)
+        if self.proposals is not None:
+            results['proposals'] = self.proposals[idx]
+        self.pre_pipeline(results)
+        return self.pipeline(results)
 
     def prepare_train_img(self, idx): #chgd
         """Get training data and annotations after pipeline.
@@ -693,13 +746,6 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 introduced by pipeline.
         """
         idx_list = []
-        # for data_index in [-3*6, -2*6, -1*6, 0]:
-        #     index = max(idx + data_index, 0)
-        #     file_name_ = self.data_infos[index]['filename']
-        #     file_date = self.data_infos[index]['filename'].split('/')[2].split('_')[0]
-        #     if file_date != self.data_infos[idx]['filename'].split('/')[2].split('_')[0]:
-        #         file_name_ = self.data_infos[idx]['filename']
-        #     idx_list.append(file_name_)
         img_info = self.data_infos[idx]
         
         
@@ -707,7 +753,9 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         sample_token = img_info['token']
         idx_list.append(img_info['filename'])
         prev_file_name_ = img_info['filename']
-        for i in range(3):
+
+        ## previous samples
+        for i in range(self.num_images-1):
             scene_token = self.nusc.get('sample', sample_token)['scene_token']
             prev_token = self.nusc.get('sample', sample_token)['prev']
             if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
@@ -716,24 +764,38 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 sample_token = prev_token
             idx_list.append(prev_file_name_)
             
+        ## previous sweeps
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
+
+
+        ## previous sweeps
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
+
         ann_info = self.get_ann_info(idx)
-        results = dict(img_info=img_info, ann_info=ann_info, prev_img_list = idx_list)
+        results = dict(img_info=img_info, ann_info=ann_info, prev_img_list=idx_list)
         if self.proposals is not None:
             results['proposals'] = self.proposals[idx]
         self.pre_pipeline(results)
+        
         return self.pipeline(results)
 
 
-    def _filter_imgs(self, min_size=32): #chgd
-            """Filter images too small or without ground truths."""
-            valid_inds = []
-            valid_img_ids = []
-            for i, img_info in enumerate(self.data_infos):
-                img_id = self.img_ids[i]
-                valid_inds.append(i)
-                valid_img_ids.append(img_id)
-            self.img_ids = valid_img_ids
-            return valid_inds
+    # def _filter_imgs(self, min_size=32): #chgd
+    #         """Filter images too small or without ground truths."""
+    #         valid_inds = []
+    #         valid_img_ids = []
+    #         for i, img_info in enumerate(self.data_infos):
+    #             img_id = self.img_ids[i]
+    #             valid_inds.append(i)
+    #             valid_img_ids.append(img_id)
+    #         self.img_ids = valid_img_ids
+    #         return valid_inds
 
 
 def output_to_nusc_box(detection):

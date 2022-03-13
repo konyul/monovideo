@@ -92,7 +92,6 @@ class NuScenesMonoDataset(CocoDataset):
         self.eval_version = eval_version
         self.use_valid_flag = use_valid_flag
         self.bbox_code_size = 9
-        self.version = version
         if self.eval_version is not None:
             from nuscenes.eval.detection.config import config_factory
             self.eval_detection_configs = config_factory(self.eval_version)
@@ -103,6 +102,31 @@ class NuScenesMonoDataset(CocoDataset):
                 use_radar=False,
                 use_map=False,
                 use_external=False)
+
+        
+        if len(self.data_infos) > 20000:
+            version = 'v1.0-trainval'
+            self.version = version
+        else:
+            version = 'v1.0-mini'
+            self.version = version
+        if version != 'v1.0-mini':
+            if not self.test_mode:
+                self.data_infos = list(sorted(self.data_infos,key=lambda e: e["timestamp"]))
+                self.data_infos = self.data_infos[::7]
+                self._set_group_flag()
+
+    def _set_group_flag(self):  #chgd
+        """Set flag according to image aspect ratio.
+
+        Images with aspect ratio greater than 1 will be set as group 1,
+        otherwise group 0.
+        """
+        self.flag = np.zeros(len(self.data_infos), dtype=np.uint8)
+        for i in range(len(self.data_infos)):
+            img_info = self.data_infos[i]
+            if img_info['width'] / img_info['height'] > 1:
+                self.flag[i] = 1
 
     def pre_pipeline(self, results):
         """Initialization before data preparation.
@@ -422,7 +446,7 @@ class NuScenesMonoDataset(CocoDataset):
             eval_set=eval_set_map[self.version],
             output_dir=output_dir,
             verbose=False)
-        nusc_eval.main(render_curves=True)
+        metrics_summary = nusc_eval.main(render_curves=True)  #chgd
 
         # record metrics
         metrics = mmcv.load(osp.join(output_dir, 'metrics_summary.json'))
@@ -442,6 +466,9 @@ class NuScenesMonoDataset(CocoDataset):
 
         detail['{}/NDS'.format(metric_prefix)] = metrics['nd_score']
         detail['{}/mAP'.format(metric_prefix)] = metrics['mean_ap']
+        if logger is not None:
+            logger.info('{0}/mAP {1}'.format(metric_prefix, metrics['mean_ap']))  #chgd
+            logger.info('car/AP : {}'.format(metrics_summary['mean_dist_aps']['car']))    #chgd
         return detail
 
     def format_results(self, results, jsonfile_prefix=None, **kwargs):
@@ -532,10 +559,10 @@ class NuScenesMonoDataset(CocoDataset):
             results_dict = dict()
             for name in result_names:
                 print('Evaluating bboxes of {}'.format(name))
-                ret_dict = self._evaluate_single(result_files[name])
+                ret_dict = self._evaluate_single(result_files[name], logger) #chgd
             results_dict.update(ret_dict)
         elif isinstance(result_files, str):
-            results_dict = self._evaluate_single(result_files)
+            results_dict = self._evaluate_single(result_files, logger) #chgd
 
         if tmp_dir is not None:
             tmp_dir.cleanup()

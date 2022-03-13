@@ -3,8 +3,6 @@ _base_ = [
     '../_base_/schedules/mmdet_schedule_1x.py', '../_base_/default_runtime.py'
 ]
 # model settings
-num_outs = 5
-channels = 256
 model = dict(
     type='FCOSMonoTemporal3D',
     pretrained='open-mmlab://detectron2/resnet50_caffe',
@@ -22,15 +20,15 @@ model = dict(
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
-        out_channels=channels,
+        out_channels=256,
         start_level=1,
         add_extra_convs='on_output',
-        num_outs=num_outs,
+        num_outs=5,
         relu_before_extra_convs=True),
     voxel_encoder=dict(
         type='TemporalVFE',
-        num_outs=num_outs,
-        in_channels=channels
+        num_outs=5,
+        in_channels=256
         ),
     bbox_head=dict(
         type='FCOSMono3DHead',
@@ -149,17 +147,7 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     step=[8, 11])
-# total_epochs = 12
-# evaluation = dict(interval=12)
-total_epochs = 30
-evaluation = dict(interval=6)
-runner = dict(type='EpochBasedRunner', max_epochs=30)
-checkpoint_config = dict(interval=6)
-
-log_config = dict(
-    interval=100,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
-    ])
-#resume_from = 'work_dirs/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d_exp/epoch_12.pth'
+total_epochs = 12
+evaluation = dict(interval=12)
+find_unused_parameters=True
+load_from = 'model_zoo/fcos3d_r50.pth'
