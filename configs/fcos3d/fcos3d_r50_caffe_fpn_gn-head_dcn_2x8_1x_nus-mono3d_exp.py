@@ -3,14 +3,12 @@ _base_ = [
     '../_base_/schedules/mmdet_schedule_1x.py', '../_base_/default_runtime.py'
 ]
 # model settings
-num_outs = 5
-channels = 256
 model = dict(
     type='FCOSMonoTemporal3D',
-    pretrained='open-mmlab://detectron2/resnet101_caffe',
+    pretrained='open-mmlab://detectron2/resnet50_caffe',
     backbone=dict(
         type='ResNet',
-        depth=101,
+        depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -22,15 +20,15 @@ model = dict(
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
-        out_channels=channels,
+        out_channels=256,
         start_level=1,
         add_extra_convs='on_output',
-        num_outs=num_outs,
+        num_outs=5,
         relu_before_extra_convs=True),
     voxel_encoder=dict(
         type='TemporalVFE',
-        num_outs=num_outs,
-        in_channels=channels
+        num_outs=5,
+        in_channels=256
         ),
     bbox_head=dict(
         type='FCOSMono3DHead',
@@ -151,3 +149,5 @@ lr_config = dict(
     step=[8, 11])
 total_epochs = 12
 evaluation = dict(interval=12)
+find_unused_parameters=True
+load_from = 'model_zoo/fcos3d_r50.pth'

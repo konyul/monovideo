@@ -3,14 +3,14 @@ _base_ = [
     '../_base_/schedules/mmdet_schedule_1x.py', '../_base_/default_runtime.py'
 ]
 # model settings
-num_outs = 5
-channels = 256
 model = dict(
-    type='FCOSMonoTemporal3D',
-    pretrained='open-mmlab://detectron2/resnet101_caffe',
+    type='FCOSFreezeMonoTemporal3D',
     backbone=dict(
         type='ResNet',
-        depth=101,
+        depth=50,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='model_zoo/fcos3d_resnet50.pth'),
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -22,21 +22,38 @@ model = dict(
     neck=dict(
         type='FPN',
         in_channels=[256, 512, 1024, 2048],
-        out_channels=channels,
+        out_channels=256,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='model_zoo/fcos3d_r50_fpn.pth'),
         start_level=1,
         add_extra_convs='on_output',
-        num_outs=num_outs,
+        num_outs=5,
         relu_before_extra_convs=True),
     voxel_encoder=dict(
-        type='TemporalVFE',
-        num_outs=num_outs,
-        in_channels=channels
+        type='DeformableTemporal',
+        embed_dims=256,
+        num_feature_levels=3,
+        encoder=dict(
+                type='DetrTransformerEncoder',
+                num_layers=6,
+                transformerlayers=dict(
+                    type='BaseTransformerLayer',
+                    attn_cfgs=dict(
+                        type='MultiScaleDeformableAttention', embed_dims=256, num_levels=3),
+                    feedforward_channels=1024,
+                    ffn_dropout=0.1,
+                    operation_order=('self_attn', 'norm', 'ffn', 'norm')))
         ),
+    
     bbox_head=dict(
         type='FCOSMono3DHead',
         num_classes=10,
         in_channels=256,
         stacked_convs=2,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='model_zoo/fcos3d_r50_head.pth'),
         feat_channels=256,
         use_direction_classifier=True,
         diff_rad_by_sin=True,
@@ -149,5 +166,17 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     step=[8, 11])
+
 total_epochs = 12
-evaluation = dict(interval=12)
+evaluation = dict(interval=6)
+runner = dict(type='EpochBasedRunner', max_epochs=12)
+checkpoint_config = dict(interval=1)
+
+log_config = dict(
+    interval=500,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
+
+find_unused_parameters=True

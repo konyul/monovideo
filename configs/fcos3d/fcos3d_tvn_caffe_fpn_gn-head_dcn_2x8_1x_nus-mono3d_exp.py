@@ -3,40 +3,31 @@ _base_ = [
     '../_base_/schedules/mmdet_schedule_1x.py', '../_base_/default_runtime.py'
 ]
 # model settings
-num_outs = 5
-channels = 256
 model = dict(
-    type='FCOSMonoTemporal3D',
-    pretrained='open-mmlab://detectron2/resnet101_caffe',
+    type='FCOSMonoTemporalI3D',
     backbone=dict(
-        type='ResNet',
-        depth=101,
-        num_stages=4,
-        out_indices=(0, 1, 2, 3),
-        frozen_stages=1,
-        dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
-        stage_with_dcn=(False, False, True, True),
-        norm_cfg=dict(type='BN', requires_grad=False),
-        norm_eval=True,
-        style='caffe'),
+        type='TVN',
+        num_classes = 10
+        ),
     neck=dict(
         type='FPN',
-        in_channels=[256, 512, 1024, 2048],
-        out_channels=channels,
+        in_channels=[384, 960, 832, 1024],
+        out_channels=384,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='model_zoo/fcos3d_r101_fpn.pth'),
         start_level=1,
         add_extra_convs='on_output',
-        num_outs=num_outs,
+        num_outs=5,
         relu_before_extra_convs=True),
-    voxel_encoder=dict(
-        type='TemporalVFE',
-        num_outs=num_outs,
-        in_channels=channels
-        ),
     bbox_head=dict(
         type='FCOSMono3DHead',
         num_classes=10,
-        in_channels=256,
+        in_channels=384,
         stacked_convs=2,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='model_zoo/fcos3d_r101_head.pth'),
         feat_channels=256,
         use_direction_classifier=True,
         diff_rad_by_sin=True,
@@ -86,6 +77,7 @@ model = dict(
         score_thr=0.05,
         min_bbox_size=0,
         max_per_img=200))
+
 class_names = [
     'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
     'motorcycle', 'pedestrian', 'traffic_cone', 'barrier'
@@ -139,7 +131,7 @@ data = dict(
     test=dict(pipeline=test_pipeline))
 # optimizer
 optimizer = dict(
-    lr=0.002, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
+    lr=0.001, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
 optimizer_config = dict(
     _delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
@@ -151,3 +143,12 @@ lr_config = dict(
     step=[8, 11])
 total_epochs = 12
 evaluation = dict(interval=12)
+runner = dict(type='EpochBasedRunner', max_epochs=12)
+find_unused_parameters = True
+checkpoint_config = dict(interval=1)
+log_config = dict(
+    interval=500,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
