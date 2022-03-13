@@ -703,6 +703,8 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         sample_token = img_info['token']
         idx_list.append(img_info['filename'])
         prev_file_name_ = img_info['filename']
+
+        ## previous samples
         for i in range(self.num_images-1):
             scene_token = self.nusc.get('sample', sample_token)['scene_token']
             prev_token = self.nusc.get('sample', sample_token)['prev']
@@ -712,6 +714,21 @@ class NuScenesMonoTemporalDataset(CocoDataset):
                 sample_token = prev_token
             idx_list.append(prev_file_name_)
 
+        ## previous sweeps
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
+
+        # import cv2
+        # import os
+        # direc_name = "temporal_sweep_4"
+        # idx_ = str(len(os.listdir(direc_name))).zfill(6)
+        # image_1 = cv2.imread("data/nuscenes/"+idx_list[0], cv2.COLOR_BGR2RGB)
+        # image_2 = cv2.imread("data/nuscenes/"+idx_list[1], cv2.COLOR_BGR2RGB)
+        # image_3 = cv2.imread("data/nuscenes/"+idx_list[2], cv2.COLOR_BGR2RGB)
+        # image_4 = np.hstack((image_3,image_2,image_1))
+        # cv2.imwrite(f"{direc_name}/"+idx_+".jpg",image_4)
 
         results = dict(img_info=img_info, prev_img_list=idx_list)
         if self.proposals is not None:
@@ -754,21 +771,18 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
         #     idx_list.append(prev_file_name_)
 
+
+        ## previous sweeps
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 2]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
+
         ann_info = self.get_ann_info(idx)
         results = dict(img_info=img_info, ann_info=ann_info, prev_img_list=idx_list)
         if self.proposals is not None:
             results['proposals'] = self.proposals[idx]
         self.pre_pipeline(results)
-
-
-        
-        # import cv2
-        # import matplotlib.pylab as plt
-        # image_1 = cv2.imread("data/nuscenes/"+idx_list[0], cv2.COLOR_BGR2RGB)
-        # image_2 = cv2.imread("data/nuscenes/"+idx_list[1], cv2.COLOR_BGR2RGB)
-        # image_3 = cv2.imread("data/nuscenes/"+idx_list[2], cv2.COLOR_BGR2RGB)
-        # image_4 = np.hstack((image_3,image_2,image_1))
-        # cv2.imwrite(f"temporal_sweeps_4/"+idx_list[0].split('__')[-1],image_4)
         
         return self.pipeline(results)
 

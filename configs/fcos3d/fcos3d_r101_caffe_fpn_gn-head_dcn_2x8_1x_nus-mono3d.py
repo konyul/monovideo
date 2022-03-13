@@ -5,8 +5,13 @@ _base_ = [
 # model settings
 model = dict(
     backbone=dict(
+        depth=50,
+        init_cfg=dict(
+            type='Pretrained',
+            checkpoint='open-mmlab://detectron2/resnet50_caffe'),
         dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
-        stage_with_dcn=(False, False, True, True)))
+        stage_with_dcn=(False, False, True, True))
+        )
 
 class_names = [
     'car', 'truck', 'trailer', 'bus', 'construction_vehicle', 'bicycle',
@@ -43,7 +48,7 @@ test_pipeline = [
         scale_factor=1.0,
         flip=False,
         transforms=[
-            dict(type='RandomFlip3D'),
+            #dict(type='RandomFlip3D'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(

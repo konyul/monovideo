@@ -7,10 +7,10 @@ num_outs = 5
 channels = 256
 model = dict(
     type='FCOSMonoTemporal3D',
-    pretrained='open-mmlab://detectron2/resnet101_caffe',
+    pretrained='open-mmlab://detectron2/resnet50_caffe',
     backbone=dict(
         type='ResNet',
-        depth=101,
+        depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -149,5 +149,17 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     step=[8, 11])
-total_epochs = 12
-evaluation = dict(interval=12)
+# total_epochs = 12
+# evaluation = dict(interval=12)
+total_epochs = 30
+evaluation = dict(interval=6)
+runner = dict(type='EpochBasedRunner', max_epochs=30)
+checkpoint_config = dict(interval=6)
+
+log_config = dict(
+    interval=100,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
+#resume_from = 'work_dirs/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d_exp/epoch_12.pth'
