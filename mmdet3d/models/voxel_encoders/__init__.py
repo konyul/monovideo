@@ -4,4 +4,4 @@ from .voxel_encoder import DynamicSimpleVFE, DynamicVFE, HardSimpleVFE, HardVFE,
 
 __all__ = [
     'PillarFeatureNet', 'HardVFE', 'DynamicVFE', 'HardSimpleVFE',
-    'DynamicSimpleVFE', 'DeformableTemporal', 'TemporalVFE'
+    'DynamicSimpleVFE', 'DeformableTemporal', 'TemporalVFE']

@@ -502,18 +502,18 @@ class TemporalVFE(nn.Module):
     def _init_layers(self):
         self.conv3d = nn.ModuleList()
         for i in range(self.num_levels):
-            conv_pred = nn.Sequential(self.convbn_3d(self.in_channels, self.in_channels, (3,3,3),1,(0,1,1)),
-                                        #nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
-                                        # nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
-                                        # nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
-                                        # nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
-                                        # nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
-                                        # nn.ReLU(inplace=True),
+            conv_pred = nn.Sequential(self.convbn_3d(self.in_channels, self.in_channels, (3,3,3),1,(1,1,1)),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        nn.ReLU(inplace=True),
                                         # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
                                         # nn.ReLU(inplace=True),
                                         #self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
@@ -523,8 +523,8 @@ class TemporalVFE(nn.Module):
                                         )
             self.conv3d.append(conv_pred)
     def convbn_3d(self, in_planes, out_planes, kernel_size, stride, pad):
-        return nn.Sequential(nn.Conv3d(in_planes, out_planes, kernel_size=kernel_size, padding=pad, stride=stride, bias=False))
-                        #nn.BatchNorm3d(out_planes))
+        return nn.Sequential(nn.Conv3d(in_planes, out_planes, kernel_size=kernel_size, padding=pad, stride=stride, bias=False),
+                        nn.BatchNorm3d(out_planes))
     def forward(self, feats):
         img_feat = []
         for idx in range(self.num_levels):

@@ -8,9 +8,9 @@ from .pointnet2_sa_msg import PointNet2SAMSG
 from .pointnet2_sa_ssg import PointNet2SASSG
 from .second import SECOND
 from .i3d import InceptionI3d
-from .tvn import TVN
+
 __all__ = [
     'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet', 'NoStemRegNet',
     'SECOND', 'DGCNNBackbone', 'PointNet2SASSG', 'PointNet2SAMSG',
-    'MultiBackbone', 'DLANet', 'InceptionI3d', 'TVN'
+    'MultiBackbone', 'DLANet', 'InceptionI3d'
 ]
