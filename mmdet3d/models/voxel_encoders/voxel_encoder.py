@@ -510,14 +510,14 @@ class TemporalVFE(nn.Module):
                                         nn.ReLU(inplace=True),
                                         self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
                                         nn.ReLU(inplace=True),
-                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
                                         nn.ReLU(inplace=True),
                                         self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
                                         nn.ReLU(inplace=True),
-                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        nn.ReLU(inplace=True),
+                                        # self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
                                         # nn.ReLU(inplace=True),
-                                        #self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
-                                        #nn.ReLU(inplace=True),
                                         #self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
                                         #nn.ReLU(inplace=True)
                                         )
@@ -706,3 +706,226 @@ class DeformableTemporal(nn.Module):
         
         return encoded_mlvl_feats
 
+
+@VOXEL_ENCODERS.register_module()
+class TemporalPrevFreezeVFE(nn.Module):
+    def __init__(self, num_outs, in_channels):
+        super(TemporalPrevFreezeVFE, self).__init__()
+        self.num_levels = num_outs
+        self.in_channels = in_channels
+        self._init_layers()
+    def _init_layers(self):
+        self.conv3d = nn.ModuleList()
+        for i in range(self.num_levels):
+            conv_pred = nn.Sequential(self.convbn_3d(self.in_channels, self.in_channels, (3,3,3),1,(1,1,1)),
+                                        #nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        #nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        nn.MaxPool3d((2,1,1),(2,1,1))
+                                        # self.convbn_3d(self.in_channels,self.in_channels,(3,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        # self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        # self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        # self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        # nn.ReLU(inplace=True),
+                                        #self.convbn_3d(self.in_channels,self.in_channels,(4,3,3),1,1),
+                                        #nn.ReLU(inplace=True)
+                                        )
+            self.conv3d.append(conv_pred)
+    def convbn_3d(self, in_planes, out_planes, kernel_size, stride, pad):
+        return nn.Sequential(nn.Conv3d(in_planes, out_planes, kernel_size=kernel_size, padding=pad, stride=stride, bias=False),)
+                        #nn.BatchNorm3d(out_planes))
+    def forward(self, feats):
+        cur_feat = feats[0]
+        prev_feat = feats[1]
+        img_feat = []
+        for idx in range(self.num_levels):
+            cur_feat_element = torch.transpose(cur_feat[idx], 1, 2).contiguous()
+            prev_feat_element = torch.transpose(prev_feat[idx], 1, 2).contiguous()
+            x = torch.cat([cur_feat_element, prev_feat_element.detach()],dim=2)
+            x = self.conv3d[idx](x)
+            x = torch.transpose(x, 1, 2).contiguous()
+            B, C, T, H, W = x.size()
+            x = x.view(B, C*T, H, W)
+            img_feat.append(x)
+
+        return img_feat
+
+
+@VOXEL_ENCODERS.register_module()
+class DeformablePrevFreezeTemporal(nn.Module):
+    def __init__(self, embed_dims,
+                 num_feature_levels,
+                    encoder=None,
+                    positional_encoding=dict(
+                     type='SinePositionalEncoding',
+                     num_feats=128,
+                     normalize=True
+                     ),
+                ):
+        super(DeformablePrevFreezeTemporal, self).__init__()
+        self.positional_encoding = build_positional_encoding(
+            positional_encoding)
+        self.embed_dims = embed_dims
+        self.encoder = build_transformer_layer_sequence(encoder)
+        self.num_feature_levels = num_feature_levels
+        
+        self.init_layers()
+    def init_layers(self):
+        """Initialize layers of the DeformableDetrTransformer."""
+        self.level_embeds = nn.Parameter(
+            torch.Tensor(self.num_feature_levels, self.embed_dims))
+        
+        self.reference_points = nn.Linear(self.embed_dims, 2)
+
+    @staticmethod
+    def get_reference_points(spatial_shapes, valid_ratios, device):
+        """Get the reference points used in decoder.
+
+        Args:
+            spatial_shapes (Tensor): The shape of all
+                feature maps, has shape (num_level, 2).
+            valid_ratios (Tensor): The radios of valid
+                points on the feature map, has shape
+                (bs, num_levels, 2)
+            device (obj:`device`): The device where
+                reference_points should be.
+
+        Returns:
+            Tensor: reference points used in decoder, has \
+                shape (bs, num_keys, num_levels, 2).
+        """
+        reference_points_list = []
+        for lvl, (H, W) in enumerate(spatial_shapes):
+            #  TODO  check this 0.5
+            ref_y, ref_x = torch.meshgrid(
+                torch.linspace(
+                    0.5, H - 0.5, H, dtype=torch.float32, device=device),
+                torch.linspace(
+                    0.5, W - 0.5, W, dtype=torch.float32, device=device))
+            ref_y = ref_y.reshape(-1)[None] / (
+                valid_ratios[:, None, lvl, 1] * H)
+            ref_x = ref_x.reshape(-1)[None] / (
+                valid_ratios[:, None, lvl, 0] * W)
+            ref = torch.stack((ref_x, ref_y), -1)
+            reference_points_list.append(ref)
+        reference_points = torch.cat(reference_points_list, 1)
+        reference_points = reference_points[:, :, None] * valid_ratios[:, None]
+        return reference_points
+
+    def init_weights(self):  ### 어디서 사용되는지
+        normal_(self.level_embeds)
+
+    def get_valid_ratio(self, mask):
+        """Get the valid radios of feature maps of all  level."""
+        _, H, W = mask.shape
+        valid_H = torch.sum(~mask[:, :, 0], 1)
+        valid_W = torch.sum(~mask[:, 0, :], 1)
+        valid_ratio_h = valid_H.float() / H
+        valid_ratio_w = valid_W.float() / W
+        valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
+        return valid_ratio
+        
+    def forward(self, feats): # B T C H W
+        
+        cur_image_feature = feats[0]
+        prev_image_feature = feats[1]
+        
+        
+        temp_dim = self.num_feature_levels
+        mlvl_dim = len(feats)
+        #mlvl_feats = feats
+        mlvl_feats = []
+        for level in range(mlvl_dim):
+            temp_feats = []
+            for temp in range(temp_dim):
+                temp_feats.append(feats[level][:,temp,...])
+            mlvl_feats.append(temp_feats)
+        encoded_mlvl_feats = []
+        for level_ in range(mlvl_dim):
+            temp_feats_ = mlvl_feats[level_]
+            batch_size = mlvl_feats[0][0].size(0)
+            temp_masks = []
+            mlvl_positional_encodings = []
+            input_img_h = 900
+            input_img_w = 1600
+            img_masks = temp_feats_[0].new_ones(
+                (batch_size, input_img_h, input_img_w))
+            
+            for feat_idx in range(len(temp_feats_)):
+                
+            #for feat in temp_feats_:
+                if feat_idx != 0:
+                    temp_feats_[feat_idx] = F.interpolate(temp_feats_[feat_idx],(int(temp_feats_[feat_idx].shape[-2]/3),int(temp_feats_[feat_idx].shape[-1]/3))).contiguous()
+                
+                temp_masks.append(
+                    F.interpolate(img_masks[None],
+                                size=temp_feats_[feat_idx].shape[-2:]).to(torch.bool).squeeze(0))
+                mlvl_positional_encodings.append(
+                    self.positional_encoding(temp_masks[-1]))
+            
+
+            feat_flatten = []
+            mask_flatten = []
+            lvl_pos_embed_flatten = []
+            spatial_shapes = []
+            mlvl_pos_embeds = mlvl_positional_encodings
+
+
+            ## flatten 과정
+            for lvl, (feat, mask, pos_embed) in enumerate(
+                    zip(temp_feats_, temp_masks, mlvl_pos_embeds)):
+                bs, c, h, w = feat.shape
+                spatial_shape = (h, w)
+                spatial_shapes.append(spatial_shape)
+                feat = feat.flatten(2).transpose(1, 2)
+                mask = mask.flatten(1)
+                pos_embed = pos_embed.flatten(2).transpose(1, 2)
+                lvl_pos_embed = pos_embed + self.level_embeds[lvl].view(1, 1, -1)
+                lvl_pos_embed_flatten.append(lvl_pos_embed)
+                feat_flatten.append(feat)
+                mask_flatten.append(mask)
+            feat_flatten = torch.cat(feat_flatten, 1)
+            mask_flatten = torch.cat(mask_flatten, 1)
+            lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)
+            spatial_shapes = torch.as_tensor(
+                spatial_shapes, dtype=torch.long, device=feat_flatten.device)
+            level_start_index = torch.cat((spatial_shapes.new_zeros(
+                (1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+            valid_ratios = torch.stack(
+                [self.get_valid_ratio(m) for m in temp_masks], 1)
+
+            reference_points = \
+                self.get_reference_points(spatial_shapes,
+                                        valid_ratios,
+                                        device=feat.device)
+
+            feat_flatten = feat_flatten.permute(1, 0, 2)  # (H*W, bs, embed_dims)
+            lvl_pos_embed_flatten = lvl_pos_embed_flatten.permute(
+                1, 0, 2)  # (H*W, bs, embed_dims)
+
+            memory = self.encoder(
+                query=feat_flatten,
+                key=None,
+                value=None,
+                query_pos=lvl_pos_embed_flatten,
+                query_key_padding_mask=mask_flatten,
+                spatial_shapes=spatial_shapes,
+                reference_points=reference_points,
+                level_start_index=level_start_index,
+                valid_ratios=valid_ratios
+                )
+            memory = memory.permute(1, 0, 2)
+            bs, _, c = memory.shape
+            bs,c,h,w = temp_feats_[0].shape
+            target_memory = memory[:,:h*w,:]
+            target_memory = target_memory.view(bs,h,w,c).permute(0,3,1,2).contiguous()
+            encoded_mlvl_feats.append(target_memory)
+        
+        return encoded_mlvl_feats

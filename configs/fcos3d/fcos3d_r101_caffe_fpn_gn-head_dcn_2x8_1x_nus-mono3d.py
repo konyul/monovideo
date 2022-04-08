@@ -10,7 +10,15 @@ model = dict(
             type='Pretrained',
             checkpoint='open-mmlab://detectron2/resnet50_caffe'),
         dcn=dict(type='DCNv2', deform_groups=1, fallback_on_stride=False),
-        stage_with_dcn=(False, False, True, True))
+        stage_with_dcn=(False, False, True, True)),
+    neck=dict(
+        type='FPN',
+        in_channels=[256, 512, 1024, 2048],
+        out_channels=256,
+        start_level=1,
+        add_extra_convs='on_output',
+        num_outs=5,
+        relu_before_extra_convs=True)
         )
 
 class_names = [
@@ -48,7 +56,7 @@ test_pipeline = [
         scale_factor=1.0,
         flip=False,
         transforms=[
-            #dict(type='RandomFlip3D'),
+            dict(type='RandomFlip3D'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='Pad', size_divisor=32),
             dict(
@@ -60,7 +68,7 @@ test_pipeline = [
 ]
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=0,
+    workers_per_gpu=4,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))

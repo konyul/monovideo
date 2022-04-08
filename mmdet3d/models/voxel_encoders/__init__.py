@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from .pillar_encoder import PillarFeatureNet
-from .voxel_encoder import DynamicSimpleVFE, DynamicVFE, HardSimpleVFE, HardVFE, DeformableTemporal, TemporalVFE
+from .voxel_encoder import DynamicSimpleVFE, DynamicVFE, HardSimpleVFE, HardVFE, DeformableTemporal, TemporalVFE, TemporalPrevFreezeVFE, DeformablePrevFreezeTemporal
 
 __all__ = [
     'PillarFeatureNet', 'HardVFE', 'DynamicVFE', 'HardSimpleVFE',
-    'DynamicSimpleVFE', 'DeformableTemporal', 'TemporalVFE']
+    'DynamicSimpleVFE', 'DeformableTemporal', 'TemporalVFE','TemporalPrevFreezeVFE','DeformablePrevFreezeTemporal']

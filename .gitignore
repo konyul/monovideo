@@ -137,3 +137,6 @@ mmdet3d/core/evaluation/waymo_utils/compute_detection_metrics_main
 logs/*
 model_zoo/*
 *.json
+
+baseline
+fcos3d*
