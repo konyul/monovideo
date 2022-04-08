@@ -139,4 +139,4 @@ model_zoo/*
 *.json
 
 baseline
-fcos3d*
+exp*
