@@ -137,7 +137,7 @@ data = dict(
     test=dict(pipeline=test_pipeline))
 # optimizer
 optimizer = dict(
-    lr=0.001, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
+    lr=0.002, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
 optimizer_config = dict(
     _delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy

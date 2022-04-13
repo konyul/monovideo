@@ -26,9 +26,19 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     voxel_encoder=dict(
-        type='TemporalPrevFreezeVFE',
-        num_outs=5,
-        in_channels=256
+        type='DeformablePrevFreezeTemporal',
+        embed_dims=256,
+        num_feature_levels=3,
+        encoder=dict(
+                type='DetrTransformerEncoderv2',
+                num_layers=6,
+                transformerlayers=dict(
+                    type='BaseTransformerLayerv2',
+                    attn_cfgs=dict(
+                        type='MultiScaleDeformableAttentionv2', embed_dims=256, num_levels=3),
+                    feedforward_channels=1024,
+                    ffn_dropout=0.1,
+                    operation_order=('self_attn', 'norm', 'ffn', 'norm')))
         ),
     bbox_head=dict(
         type='FCOSMono3DHead',
@@ -130,7 +140,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=1,
     workers_per_gpu=4,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
@@ -161,4 +171,5 @@ log_config = dict(
 
 find_unused_parameters=True
 #load_from = 'baseline/epoch_12.pth'
-load_from = 'work_dirs/fcos3d_r101_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d/epoch_12.pth'
+load_from = 'work_dirs/fcos3d_r50_baseline_batch4/epoch_12.pth'
+#resume_from = 'work_dirs/fcos3d_r50_prev_all_freeze_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d_deform_detr_exp/epoch_5.pth'

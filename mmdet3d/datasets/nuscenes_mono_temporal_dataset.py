@@ -704,20 +704,20 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         prev_file_name_ = img_info['filename']
 
         ## previous samples
-        # for i in range(self.num_images-1):
-        #     scene_token = self.nusc.get('sample', sample_token)['scene_token']
-        #     prev_token = self.nusc.get('sample', sample_token)['prev']
-        #     if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
-        #         prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
-        #         prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
-        #         sample_token = prev_token
-        #     idx_list.append(prev_file_name_)
+        for i in range(self.num_images-1):
+            scene_token = self.nusc.get('sample', sample_token)['scene_token']
+            prev_token = self.nusc.get('sample', sample_token)['prev']
+            if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
+                prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
+                prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
+                sample_token = prev_token
+            idx_list.append(prev_file_name_)
 
         ## previous sweeps
-        for i in range(self.num_images-1):
-            if len(img_info['sweeps']) > i * 4:
-                prev_file_name_ = img_info['sweeps'][i * 1]['data_path'].split('data/nuscenes/')[-1]
-            idx_list.append(prev_file_name_)
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 1]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
 
         # import cv2
         # import os
@@ -755,20 +755,20 @@ class NuScenesMonoTemporalDataset(CocoDataset):
         prev_file_name_ = img_info['filename']
 
         ## previous samples
-        # for i in range(self.num_images-1):
-        #     scene_token = self.nusc.get('sample', sample_token)['scene_token']
-        #     prev_token = self.nusc.get('sample', sample_token)['prev']
-        #     if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
-        #         prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
-        #         prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
-        #         sample_token = prev_token
-        #     idx_list.append(prev_file_name_)
+        for i in range(self.num_images-1):
+            scene_token = self.nusc.get('sample', sample_token)['scene_token']
+            prev_token = self.nusc.get('sample', sample_token)['prev']
+            if prev_token and scene_token == self.nusc.get("sample", prev_token)['scene_token']:
+                prev_cam_token = self.nusc.get('sample', prev_token)['data'][sensor]
+                prev_file_name_ = self.nusc.get('sample_data', prev_cam_token)['filename']
+                sample_token = prev_token
+            idx_list.append(prev_file_name_)
             
         ## previous sweeps
-        for i in range(self.num_images-1):
-            if len(img_info['sweeps']) > i * 4:
-                prev_file_name_ = img_info['sweeps'][i * 1]['data_path'].split('data/nuscenes/')[-1]
-            idx_list.append(prev_file_name_)
+        # for i in range(self.num_images-1):
+        #     if len(img_info['sweeps']) > i * 4:
+        #         prev_file_name_ = img_info['sweeps'][i * 1]['data_path'].split('data/nuscenes/')[-1]
+        #     idx_list.append(prev_file_name_)
 
         ann_info = self.get_ann_info(idx)
         results = dict(img_info=img_info, ann_info=ann_info, prev_img_list=idx_list)

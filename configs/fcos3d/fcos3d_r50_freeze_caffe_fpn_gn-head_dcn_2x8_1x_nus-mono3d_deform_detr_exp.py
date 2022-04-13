@@ -149,14 +149,14 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=0,
+    samples_per_gpu=1,
+    workers_per_gpu=4,
     train=dict(pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
 # optimizer
 optimizer = dict(
-    lr=0.002, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
+    lr=0.001, paramwise_cfg=dict(bias_lr_mult=2., bias_decay_mult=0.))
 optimizer_config = dict(
     _delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
 # learning policy
@@ -167,9 +167,9 @@ lr_config = dict(
     warmup_ratio=1.0 / 3,
     step=[8, 11])
 
-total_epochs = 12
-evaluation = dict(interval=6)
-runner = dict(type='EpochBasedRunner', max_epochs=12)
+total_epochs = 24
+evaluation = dict(interval=12)
+runner = dict(type='EpochBasedRunner', max_epochs=24)
 checkpoint_config = dict(interval=1)
 
 log_config = dict(
@@ -180,3 +180,4 @@ log_config = dict(
     ])
 
 find_unused_parameters=True
+load_from='work_dirs/fcos3d_r50_caffe_fpn_gn-head_dcn_2x8_1x_nus-mono3d/epoch_12.pth'
