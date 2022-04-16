@@ -11,7 +11,7 @@ from .utils import VFELayer, get_paddings_indicator
 import torch.nn.functional as F
 from mmcv.cnn.bricks.transformer import FFN, build_positional_encoding
 from torch.nn.init import normal_
-from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence
+from mmcv.cnn.bricks.transformer import build_transformer_layer_sequence, BaseTransformerLayer, TransformerLayerSequence
 from mmcv.cnn import constant_init
 import math
 from mmcv.cnn.bricks.registry import (TRANSFORMER_LAYER,ATTENTION, FEEDFORWARD_NETWORK,
@@ -25,7 +25,7 @@ from mmcv.utils import ext_loader
 from torch.autograd.function import Function, once_differentiable
 from mmcv.cnn import constant_init, xavier_init
 from mmcv import deprecated_api_warning
-
+from mmdet.models.utils.transformer import inverse_sigmoid
 
 @VOXEL_ENCODERS.register_module()
 class HardSimpleVFE(nn.Module):
@@ -869,7 +869,7 @@ class DeformablePrevFreezeTemporal(nn.Module):
         """
         reference_points_list = []
         flatten_feature_shape = (spatial_shapes[0][0]*spatial_shapes[0][1]).item()
-        query = query[:,:flatten_feature_shape]  # 수정필요
+        #query = query[:,:flatten_feature_shape]  # 수정필요
         for lvl, (H, W) in enumerate(spatial_shapes):
             if lvl == 0:
                 #  TODO  check this 0.5
@@ -1003,6 +1003,371 @@ class DeformablePrevFreezeTemporal(nn.Module):
             encoded_mlvl_feats.append(target_memory)
         
         return encoded_mlvl_feats
+
+@VOXEL_ENCODERS.register_module()
+class DeformablePrevFreezeTemporalv2(nn.Module): #decoder
+    def __init__(self, embed_dims,
+                 num_feature_levels,
+                    decoder=None,
+                    positional_encoding=dict(
+                     type='SinePositionalEncoding',
+                     num_feats=128,
+                     normalize=True
+                     ),
+                ):
+        super(DeformablePrevFreezeTemporalv2, self).__init__()
+        self.positional_encoding = build_positional_encoding(
+            positional_encoding)
+        self.embed_dims = embed_dims
+        self.decoder = build_transformer_layer_sequence(decoder)
+        self.num_feature_levels = num_feature_levels
+        self.reference_layer_ = nn.Linear(self.embed_dims,2)
+        self.reference_layer__ = nn.Linear(self.embed_dims,2)
+        self.init_layers()
+    def init_layers(self):
+        """Initialize layers of the DeformableDetrTransformer."""
+        self.level_embeds = nn.Parameter(
+            torch.Tensor(self.num_feature_levels, self.embed_dims))
+        
+        ##todo0409
+        # constant_init(self.sampling_offsets, 0.)
+        # thetas = torch.arange(
+        #     self.num_heads,
+        #     dtype=torch.float32) * (2.0 * math.pi / self.num_heads)
+        # grid_init = torch.stack([thetas.cos(), thetas.sin()], -1)
+        # grid_init = (grid_init /
+        #              grid_init.abs().max(-1, keepdim=True)[0]).view(
+        #                  self.num_heads, 1, 1,
+        #                  2).repeat(1, self.num_levels, self.num_points, 1)
+        # for i in range(self.num_points):
+        #     grid_init[:, :, i, :] *= i + 1
+
+        # self.sampling_offsets.bias.data = grid_init.view(-1)
+        ##
+        
+
+        
+    # @staticmethod
+    # def get_reference_points(spatial_shapes, valid_ratios, device):
+    #     """Get the reference points used in decoder.
+
+    #     Args:
+    #         spatial_shapes (Tensor): The shape of all
+    #             feature maps, has shape (num_level, 2).
+    #         valid_ratios (Tensor): The radios of valid
+    #             points on the feature map, has shape
+    #             (bs, num_levels, 2)
+    #         device (obj:`device`): The device where
+    #             reference_points should be.
+
+    #     Returns:
+    #         Tensor: reference points used in decoder, has \
+    #             shape (bs, num_keys, num_levels, 2).
+    #     """
+    #     reference_points_list = []
+    #     for lvl, (H, W) in enumerate(spatial_shapes):
+    #         #  TODO  check this 0.5
+    #         ref_y, ref_x = torch.meshgrid(
+    #             torch.linspace(
+    #                 0.5, H - 0.5, H, dtype=torch.float32, device=device),
+    #             torch.linspace(
+    #                 0.5, W - 0.5, W, dtype=torch.float32, device=device))
+    #         ref_y = ref_y.reshape(-1)[None] / (
+    #             valid_ratios[:, None, lvl, 1] * H)
+    #         ref_x = ref_x.reshape(-1)[None] / (
+    #             valid_ratios[:, None, lvl, 0] * W)
+    #         ref = torch.stack((ref_x, ref_y), -1)
+    #         reference_points_list.append(ref)
+    #     reference_points = torch.cat(reference_points_list, 1)
+    #     reference_points = reference_points[:, :, None] * valid_ratios[:, None]
+    #     return reference_points
+    
+    def get_reference_points(self, query, spatial_shapes, valid_ratios, device):
+        """Get the reference points used in decoder.
+
+        Args:
+            spatial_shapes (Tensor): The shape of all
+                feature maps, has shape (num_level, 2).
+            valid_ratios (Tensor): The radios of valid
+                points on the feature map, has shape
+                (bs, num_levels, 2)
+            device (obj:`device`): The device where
+                reference_points should be.
+
+        Returns:
+            Tensor: reference points used in decoder, has \
+                shape (bs, num_keys, num_levels, 2).
+        """
+        reference_points_list = []
+        flatten_feature_shape = (spatial_shapes[0][0]*spatial_shapes[0][1]).item()
+        #query = query[:,:flatten_feature_shape]  # 수정필요
+        for lvl, (H, W) in enumerate(spatial_shapes):
+            if lvl == 0:
+                #  TODO  check this 0.5
+                ref_y, ref_x = torch.meshgrid(
+                    torch.linspace(
+                        0.5, H - 0.5, H, dtype=torch.float32, device=device),
+                    torch.linspace(
+                        0.5, W - 0.5, W, dtype=torch.float32, device=device))
+                ref_y = ref_y.reshape(-1)[None] / (
+                    valid_ratios[:, None, lvl, 1] * H)
+                ref_x = ref_x.reshape(-1)[None] / (
+                    valid_ratios[:, None, lvl, 0] * W)
+                ref = torch.stack((ref_x, ref_y), -1)
+                reference_points_list.append(ref)
+            elif lvl == 1:
+                ref = self.reference_layer_(query[:,flatten_feature_shape:flatten_feature_shape*2])
+                reference_points_list.append(ref)
+            else:
+                ref = self.reference_layer__(query[:,flatten_feature_shape*2:])
+                reference_points_list.append(ref)
+        #reference_points = torch.cat(reference_points_list, 1)
+        reference_points = torch.stack(reference_points_list, 2)
+        #reference_points = reference_points[:, :, None] * valid_ratios[:, None]
+        return reference_points
+
+    def init_weights(self):  ### 어디서 사용되는지
+        normal_(self.level_embeds)
+
+    def get_valid_ratio(self, mask):
+        """Get the valid radios of feature maps of all  level."""
+        _, H, W = mask.shape
+        valid_H = torch.sum(~mask[:, :, 0], 1)
+        valid_W = torch.sum(~mask[:, 0, :], 1)
+        valid_ratio_h = valid_H.float() / H
+        valid_ratio_w = valid_W.float() / W
+        valid_ratio = torch.stack([valid_ratio_w, valid_ratio_h], -1)
+        return valid_ratio
+        
+    def forward(self, features): # B T C H W
+        # original feat : list of 5 element, in list B T C H W
+        cur_image_feature = features[0]  #list of 5 element, in list B T C H W
+        prev_image_feature = features[1]
+        feats = []
+        for i in range(5):
+            feats.append(torch.cat([cur_image_feature[i], prev_image_feature[i]], axis=1))
+        temp_dim = self.num_feature_levels
+        mlvl_dim = len(feats)
+        #mlvl_feats = feats
+        mlvl_feats = []
+        for level in range(mlvl_dim):
+            temp_feats = []
+            for temp in range(temp_dim):
+                temp_feats.append(feats[level][:,temp,...])
+            mlvl_feats.append(temp_feats)
+        encoded_mlvl_feats = []
+        for level_ in range(mlvl_dim):
+            temp_feats_ = mlvl_feats[level_]
+            batch_size = mlvl_feats[0][0].size(0)
+            temp_masks = []
+            mlvl_positional_encodings = []
+            input_img_h = 900
+            input_img_w = 1600
+            img_masks = temp_feats_[0].new_ones(
+                (batch_size, input_img_h, input_img_w))
+            for feat_idx in range(len(temp_feats_)):
+            #for feat in temp_feats_:
+                if feat_idx != 0:
+                    temp_feats_[feat_idx] = F.interpolate(temp_feats_[feat_idx],(int(temp_feats_[feat_idx].shape[-2]),int(temp_feats_[feat_idx].shape[-1]))).contiguous()
+                temp_masks.append(
+                    F.interpolate(img_masks[None],
+                                size=temp_feats_[feat_idx].shape[-2:]).to(torch.bool).squeeze(0))
+                mlvl_positional_encodings.append(
+                    self.positional_encoding(temp_masks[-1]))
+            feat_flatten = []
+            mask_flatten = []
+            lvl_pos_embed_flatten = []
+            spatial_shapes = []
+            mlvl_pos_embeds = mlvl_positional_encodings
+
+
+            ## flatten 과정
+            for lvl, (feat, mask, pos_embed) in enumerate(
+                    zip(temp_feats_, temp_masks, mlvl_pos_embeds)):
+                bs, c, h, w = feat.shape
+                spatial_shape = (h, w)
+                spatial_shapes.append(spatial_shape)
+                feat = feat.flatten(2).transpose(1, 2)
+                mask = mask.flatten(1)
+                pos_embed = pos_embed.flatten(2).transpose(1, 2)
+                lvl_pos_embed = pos_embed + self.level_embeds[lvl].view(1, 1, -1)
+                lvl_pos_embed_flatten.append(lvl_pos_embed)
+                if lvl == 0:
+                    cur_flat_feat_size = feat.shape[1]
+                feat_flatten.append(feat)
+                mask_flatten.append(mask)
+            feat_flatten = torch.cat(feat_flatten, 1)
+            mask_flatten = torch.cat(mask_flatten, 1)
+            lvl_pos_embed_flatten = torch.cat(lvl_pos_embed_flatten, 1)
+            spatial_shapes = torch.as_tensor(
+                spatial_shapes, dtype=torch.long, device=feat_flatten.device)
+            level_start_index = torch.cat((spatial_shapes.new_zeros(
+                (1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+            valid_ratios = torch.stack(
+                [self.get_valid_ratio(m) for m in temp_masks], 1)
+
+            reference_points = \
+                self.get_reference_points(feat_flatten,spatial_shapes,  #feat_flatten 추가
+                                        valid_ratios,
+                                        device=feat.device)
+
+            feat_flatten = feat_flatten.permute(1, 0, 2)  # (H*W, bs, embed_dims)
+            lvl_pos_embed_flatten = lvl_pos_embed_flatten.permute(
+                1, 0, 2)  # (H*W, bs, embed_dims)
+
+            inter_states, inter_references = self.decoder(
+                query=feat_flatten[:cur_flat_feat_size],
+                key=None,
+                value=feat_flatten,
+                key_padding_mask=mask_flatten,
+                reference_points=reference_points,
+                spatial_shapes=spatial_shapes,
+                level_start_index=level_start_index,
+                valid_ratios=valid_ratios)
+
+            inter_states = inter_states.permute(1, 0, 2)
+            bs,c,h,w = temp_feats_[0].shape
+            bs, _, c = inter_states.shape
+            target_memory = inter_states[:,:h*w,:]
+            target_memory = target_memory.view(bs,h,w,c).permute(0,3,1,2).contiguous()
+            encoded_mlvl_feats.append(target_memory)
+        
+        return encoded_mlvl_feats
+    
+    
+@TRANSFORMER_LAYER_SEQUENCE.register_module()
+class DeformableDetrTransformerDecoderv2(TransformerLayerSequence):
+    """Implements the decoder in DETR transformer.
+
+    Args:
+        return_intermediate (bool): Whether to return intermediate outputs.
+        coder_norm_cfg (dict): Config of last normalization layer. Default：
+            `LN`.
+    """
+
+    def __init__(self, *args, return_intermediate=False, **kwargs):
+
+        super(DeformableDetrTransformerDecoderv2, self).__init__(*args, **kwargs)
+        self.return_intermediate = return_intermediate
+
+    def forward(self,
+                query,
+                *args,
+                reference_points=None,
+                valid_ratios=None,
+                reg_branches=None,
+                **kwargs):
+        """Forward function for `TransformerDecoder`.
+
+        Args:
+            query (Tensor): Input query with shape
+                `(num_query, bs, embed_dims)`.
+            reference_points (Tensor): The reference
+                points of offset. has shape
+                (bs, num_query, 4) when as_two_stage,
+                otherwise has shape ((bs, num_query, 2).
+            valid_ratios (Tensor): The radios of valid
+                points on the feature map, has shape
+                (bs, num_levels, 2)
+            reg_branch: (obj:`nn.ModuleList`): Used for
+                refining the regression results. Only would
+                be passed when with_box_refine is True,
+                otherwise would be passed a `None`.
+
+        Returns:
+            Tensor: Results with shape [1, num_query, bs, embed_dims] when
+                return_intermediate is `False`, otherwise it has shape
+                [num_layers, num_query, bs, embed_dims].
+        """
+        output = query
+        intermediate = []
+        intermediate_reference_points = []
+        for lid, layer in enumerate(self.layers):
+            if reference_points.shape[-1] == 4:
+                reference_points_input = reference_points[:, :, None] * \
+                    torch.cat([valid_ratios, valid_ratios], -1)[:, None]
+            else:
+                assert reference_points.shape[-1] == 2
+                # reference_points_input = reference_points[:, :, None] * \
+                #     valid_ratios[:, None]
+                reference_points_input = reference_points
+            output = layer(
+                output,
+                *args,
+                reference_points=reference_points_input,
+                **kwargs)
+            output = output.permute(1, 0, 2)
+
+            if reg_branches is not None:
+                tmp = reg_branches[lid](output)
+                if reference_points.shape[-1] == 4:
+                    new_reference_points = tmp + inverse_sigmoid(
+                        reference_points)
+                    new_reference_points = new_reference_points.sigmoid()
+                else:
+                    assert reference_points.shape[-1] == 2
+                    new_reference_points = tmp
+                    new_reference_points[..., :2] = tmp[
+                        ..., :2] + inverse_sigmoid(reference_points)
+                    new_reference_points = new_reference_points.sigmoid()
+                reference_points = new_reference_points.detach()
+
+            output = output.permute(1, 0, 2)
+            if self.return_intermediate:
+                intermediate.append(output)
+                intermediate_reference_points.append(reference_points)
+
+        if self.return_intermediate:
+            return torch.stack(intermediate), torch.stack(
+                intermediate_reference_points)
+
+        return output, reference_points
+
+
+@TRANSFORMER_LAYER.register_module()
+class DetrTransformerDecoderLayerv2(BaseTransformerLayer):
+    """Implements decoder layer in DETR transformer.
+
+    Args:
+        attn_cfgs (list[`mmcv.ConfigDict`] | list[dict] | dict )):
+            Configs for self_attention or cross_attention, the order
+            should be consistent with it in `operation_order`. If it is
+            a dict, it would be expand to the number of attention in
+            `operation_order`.
+        feedforward_channels (int): The hidden dimension for FFNs.
+        ffn_dropout (float): Probability of an element to be zeroed
+            in ffn. Default 0.0.
+        operation_order (tuple[str]): The execution order of operation
+            in transformer. Such as ('self_attn', 'norm', 'ffn', 'norm').
+            Default：None
+        act_cfg (dict): The activation config for FFNs. Default: `LN`
+        norm_cfg (dict): Config dict for normalization layer.
+            Default: `LN`.
+        ffn_num_fcs (int): The number of fully-connected layers in FFNs.
+            Default：2.
+    """
+
+    def __init__(self,
+                 attn_cfgs,
+                 feedforward_channels,
+                 ffn_dropout=0.0,
+                 operation_order=None,
+                 act_cfg=dict(type='ReLU', inplace=True),
+                 norm_cfg=dict(type='LN'),
+                 ffn_num_fcs=2,
+                 **kwargs):
+        super(DetrTransformerDecoderLayerv2, self).__init__(
+            attn_cfgs=attn_cfgs,
+            feedforward_channels=feedforward_channels,
+            ffn_dropout=ffn_dropout,
+            operation_order=operation_order,
+            act_cfg=act_cfg,
+            norm_cfg=norm_cfg,
+            ffn_num_fcs=ffn_num_fcs,
+            **kwargs)
+        assert len(operation_order) == 6
+        assert set(operation_order) == set(
+            ['norm', 'cross_attn', 'ffn'])
 
 def build_transformer_layer(cfg, default_args=None):
     """Builder for transformer layer."""

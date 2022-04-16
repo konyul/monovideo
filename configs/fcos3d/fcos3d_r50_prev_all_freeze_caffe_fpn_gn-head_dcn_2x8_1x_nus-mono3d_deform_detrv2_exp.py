@@ -26,20 +26,29 @@ model = dict(
         num_outs=5,
         relu_before_extra_convs=True),
     voxel_encoder=dict(
-        type='DeformablePrevFreezeTemporal',
+        type='DeformablePrevFreezeTemporalv2',
         embed_dims=256,
         num_feature_levels=3,
-        encoder=dict(
-                type='DetrTransformerEncoderv2',
-                num_layers=6,
-                transformerlayers=dict(
-                    type='BaseTransformerLayerv2',
-                    attn_cfgs=dict(
-                        type='MultiScaleDeformableAttentionv2', embed_dims=256, num_levels=3),
-                    feedforward_channels=1024,
-                    ffn_dropout=0.1,
-                    operation_order=('self_attn', 'norm', 'ffn', 'norm')))
-        ),
+        decoder=dict(
+            type='DeformableDetrTransformerDecoderv2',
+            num_layers=6,
+            #return_intermediate=True,
+            transformerlayers=dict(
+                type='DetrTransformerDecoderLayerv2',
+                attn_cfgs=[
+                    dict(
+                        type='MultiScaleDeformableAttention',
+                        num_levels=3,
+                        embed_dims=256),
+                    dict(
+                        type='MultiScaleDeformableAttention',
+                        num_levels=3,
+                        embed_dims=256)
+                ],
+                feedforward_channels=1024,
+                ffn_dropout=0.1,
+                operation_order=('cross_attn', 'norm','cross_attn','norm',
+                                    'ffn', 'norm')))),
     bbox_head=dict(
         type='FCOSMono3DHead',
         num_classes=10,
