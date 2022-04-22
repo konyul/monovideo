@@ -39,15 +39,11 @@ model = dict(
                     dict(
                         type='MultiScaleDeformableAttention',
                         num_levels=3,
-                        embed_dims=256),
-                    dict(
-                        type='MultiScaleDeformableAttention',
-                        num_levels=3,
                         embed_dims=256)
                 ],
                 feedforward_channels=1024,
                 ffn_dropout=0.1,
-                operation_order=('cross_attn', 'norm','cross_attn','norm',
+                operation_order=('cross_attn','norm',
                                     'ffn', 'norm')))),
     bbox_head=dict(
         type='FCOSMono3DHead',
@@ -166,9 +162,9 @@ lr_config = dict(
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
     step=[8, 11])
-total_epochs = 12
-evaluation = dict(interval=12)
-runner = dict(type='EpochBasedRunner', max_epochs=12)
+total_epochs = 24
+evaluation = dict(interval=24)
+runner = dict(type='EpochBasedRunner', max_epochs=24)
 checkpoint_config = dict(interval=1)
 
 log_config = dict(
